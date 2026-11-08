@@ -5,6 +5,7 @@ NOMES_DIAS = {
     0: "segunda", 1: "terça", 2: "quarta", 3: "quinta",
     4: "sexta", 5: "sábado", 6: "domingo",
 }
+
 def populate_dim_data(con: DuckDBPyConnection, inicio: str, fim: str) -> None:
     datas = pd.date_range(start=inicio, end=fim, freq="D")
 
