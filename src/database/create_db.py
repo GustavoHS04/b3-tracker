@@ -1,31 +1,31 @@
 from duckdb import DuckDBPyConnection
 
-def _create_dim_data(con: DuckDBPyConnection) -> None:
+def _create_dim_date(con: DuckDBPyConnection) -> None:
     con.execute("""
-        CREATE TABLE IF NOT EXISTS dim_data (
-            data        DATE PRIMARY KEY,
-            ano         INTEGER,
-            mes         INTEGER,
-            dia_semana  VARCHAR
+        CREATE TABLE IF NOT EXISTS dim_date (
+            date      DATE PRIMARY KEY,
+            year      INTEGER,
+            month     INTEGER,
+            week_day  VARCHAR
         )
     """)
 
-def _create_cotacoes_diarias(con: DuckDBPyConnection) -> None:
+def _create_daily_quotes(con: DuckDBPyConnection) -> None:
     con.execute("""
-        CREATE TABLE IF NOT EXISTS cotacoes_diarias (
+        CREATE TABLE IF NOT EXISTS daily_quotes (
             ticker  VARCHAR NOT NULL,
-            data    DATE    NOT NULL,
+            date    DATE    NOT NULL,
             open    DOUBLE,
             high    DOUBLE,
             low     DOUBLE,
             close   DOUBLE,
             volume  BIGINT,
-            PRIMARY KEY (ticker, data),
-            FOREIGN KEY (data) REFERENCES dim_data (data)
+            PRIMARY KEY (ticker, date),
+            FOREIGN KEY (date) REFERENCES dim_date (date)
         )
     """)
 
 
 def create(con: DuckDBPyConnection) -> None:
-    _create_dim_data(con)
-    _create_cotacoes_diarias(con)
+    _create_dim_date(con)
+    _create_daily_quotes(con)
