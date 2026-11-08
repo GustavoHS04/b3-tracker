@@ -2,19 +2,19 @@ import pandas as pd
 from duckdb import DuckDBPyConnection
 
 NOMES_DIAS = {
-    0: "segunda", 1: "terça", 2: "quarta", 3: "quinta",
-    4: "sexta", 5: "sábado", 6: "domingo",
+    0: "monday", 1: "tuesday", 2: "wednesday", 3: "thursday",
+    4: "friday", 5: "saturday", 6: "sunday",
 }
 
 def populate_dim_data(con: DuckDBPyConnection, inicio: str, fim: str) -> None:
     datas = pd.date_range(start=inicio, end=fim, freq="D")
 
-    df = pd.DataFrame({"data": datas})
-    df["ano"] = df["data"].dt.year
-    df["mes"] = df["data"].dt.month
-    df["dia_semana"] = df["data"].dt.dayofweek.map(NOMES_DIAS)
+    df = pd.DataFrame({"date": datas})
+    df["year"] = df["date"].dt.year
+    df["month"] = df["date"].dt.month
+    df["week_day"] = df["date"].dt.dayofweek.map(NOMES_DIAS)
 
     con.execute("""
-        INSERT OR IGNORE INTO dim_data (data, ano, mes, dia_semana)
-        SELECT CAST(data AS DATE), ano, mes, dia_semana FROM df
+        INSERT OR IGNORE INTO dim_date (date, year, month, week_day)
+        SELECT CAST(date AS DATE), year, month, week_day FROM df
     """)
