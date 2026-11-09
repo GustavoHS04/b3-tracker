@@ -24,3 +24,8 @@ def preparar_cotacoes(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
     df["ticker"] = ticker
 
     return df[["ticker", "date", "open", "high", "low", "close", "volume"]]
+
+def buscar_nome(ticker: str) -> str:
+    info = yf.Ticker(ticker).info
+
+    return info.get("longName") or info.get("shortName") or ticker
