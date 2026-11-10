@@ -1,8 +1,16 @@
 from duckdb import DuckDBPyConnection
+import pandas as pd
 
 from .sources.yahoo import buscar_historico, buscar_nome, preparar_cotacoes
 from .database.populate_db import populate_dim_ticker, save_quotes
-from .database.queries import get_last_date, list_tickers
+from .database.queries import get_last_date, list_tickers, get_first_date
+
+def _precisa_rebaixar(df: pd.DataFrame) -> bool:
+    if (df["Dividends"] > 0).any() or (df["Stock Splits"] > 0).any():
+        return True
+    
+    return False
+
 def _normalize_ticker(raw: str) -> str:
     normalized = raw.strip().upper()
     if not normalized.endswith(".SA"):
@@ -41,6 +49,12 @@ def update_ticker(con: DuckDBPyConnection, ticker: str) -> bool:
     if df is None:
         return False
 
+    if last is not None and _precisa_rebaixar(df):
+        first = get_first_date(con, ticker)
+        df = buscar_historico(ticker, inicio=first)
+        if df is None:
+            return False
+        
     df = preparar_cotacoes(df, ticker)
     save_quotes(con, df)
 

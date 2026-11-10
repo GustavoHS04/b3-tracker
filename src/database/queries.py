@@ -2,6 +2,11 @@ from duckdb import DuckDBPyConnection
 from datetime import date
 
 
+def get_first_date(con: DuckDBPyConnection, ticker: str) -> date | None:
+    row = con.execute("SELECT min(date) FROM daily_quotes WHERE ticker = ?", [ticker]).fetchone()
+
+    return row[0] if row is not None else None
+
 def get_last_date(con: DuckDBPyConnection, ticker: str) -> date | None:
     row = con.execute("SELECT max(date) FROM daily_quotes WHERE ticker = ?", [ticker]).fetchone()
 
