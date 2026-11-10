@@ -1,9 +1,12 @@
 import yfinance as yf
 import pandas as pd
+from datetime import date
 
-
-def buscar_historico(ticker: str, periodo: str = "10y") -> pd.DataFrame | None:
-    df = yf.Ticker(ticker).history(period=periodo, auto_adjust=True)
+def buscar_historico(ticker: str, periodo: str = "10y", inicio: date | None = None) -> pd.DataFrame | None:
+    if inicio is None:
+        df = yf.Ticker(ticker).history(period=periodo, auto_adjust=True)
+    else:
+        df = yf.Ticker(ticker).history(start=inicio, auto_adjust=True)
 
     return df if not df.empty else None
 

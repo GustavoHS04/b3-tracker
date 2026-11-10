@@ -2,7 +2,7 @@ from duckdb import DuckDBPyConnection
 
 from .sources.yahoo import buscar_historico, buscar_nome, preparar_cotacoes
 from .database.populate_db import populate_dim_ticker, save_quotes
-
+from .database.queries import get_last_date, list_tickers
 def _normalize_ticker(raw: str) -> str:
     normalized = raw.strip().upper()
     if not normalized.endswith(".SA"):
@@ -33,6 +33,25 @@ def add_tickers(con: DuckDBPyConnection, raws: str | list[str], periodo: str = "
 
         results[ticker] = True
 
+    return results
 
+def update_ticker(con: DuckDBPyConnection, ticker: str) -> bool:
+    last = get_last_date(con, ticker)
+    df = buscar_historico(ticker, inicio=last)
+    if df is None:
+        return False
+
+    df = preparar_cotacoes(df, ticker)
+    save_quotes(con, df)
+
+    return True
+
+def update_all(con: DuckDBPyConnection) -> dict[str, bool]:
+    tickers = list_tickers(con)
+    results = {}
+    for ticker in tickers:
+        result = update_ticker(con, ticker)
+
+        results[ticker] = result
 
     return results
