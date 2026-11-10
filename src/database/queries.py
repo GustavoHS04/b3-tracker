@@ -18,17 +18,14 @@ def list_tickers(con: DuckDBPyConnection) -> list[str]:
     return [row[0] for row in rows]
 
 def get_indicators(con: DuckDBPyConnection, ticker: str, window: int = 20, vol_window: int = 20) -> pd.DataFrame:
-    if window < 1:
-        raise ValueError("window precisa ser >= 1")
-
     result = con.execute(f"""
         WITH base AS (
             SELECT
                 date,
                 close,
                 close/lag(close) OVER(PARTITION BY ticker ORDER BY date) - 1 AS daily_return
-                FROM daily_quotes
-                WHERE ticker = ?
+            FROM daily_quotes
+            WHERE ticker = ?
         )
         SELECT
             date,
@@ -50,4 +47,45 @@ def get_indicators(con: DuckDBPyConnection, ticker: str, window: int = 20, vol_w
         ORDER BY date
     """, [ticker]).df()
 
+    return result
+
+def get_summary(con: DuckDBPyConnection, window: int = 20, vol_window: int = 20) -> pd.DataFrame:
+    result = con.execute(f"""
+        WITH base AS (
+            SELECT
+                ticker,
+                date,
+                close,
+                close / lag(close) OVER(PARTITION BY ticker ORDER BY date) - 1 AS daily_return
+            FROM daily_quotes
+        ),
+        calc AS (
+            SELECT
+                ticker,
+                date,
+                close,
+                daily_return,
+                avg(close) OVER (
+                    PARTITION BY ticker
+                    ORDER BY date
+                    ROWS BETWEEN {window - 1} PRECEDING AND CURRENT ROW
+                ) AS moving_avg,
+                stddev_samp(daily_return) OVER (
+                    PARTITION BY ticker
+                    ORDER BY date
+                    ROWS BETWEEN {vol_window - 1} PRECEDING AND CURRENT ROW
+                ) AS volatility,
+                close / max(close) OVER (
+                    PARTITION BY ticker  
+                    ORDER BY date
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW  
+                ) - 1 AS drawdown,
+                row_number() OVER (PARTITION BY ticker ORDER BY date DESC) AS rn
+            FROM base
+        )
+        SELECT ticker, date, close, daily_return, moving_avg, volatility, drawdown
+        FROM calc
+        WHERE rn = 1
+        ORDER BY ticker
+    """).df()
     return result
