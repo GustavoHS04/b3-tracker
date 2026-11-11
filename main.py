@@ -1,21 +1,36 @@
-import yfinance as yf
-import pandas as pd
+from src.database.bootstrap_db import bootstrap_db
+from src.database.queries import get_summary
+from src.database.connect_db import connect
+from src.summary import format_summary
+from src.service import update_all
 
-class DadosIndisponiveisisError(Exception):
-    """Dados indisponíveis para este fundo."""
+def update_database() -> None:
+    con = connect(read_only=False)
 
-def buscar_historico(ticker: str, periodo: str = "1y"):
-    df = yf.Ticker(ticker).history(period=periodo, auto_adjust=True)
-    if df.empty:
-        raise DadosIndisponiveisisError(f"dados indisponíveis para o ticker '{ticker}'.")
-        
-    return df
+    bootstrap_db(con)
+    results = update_all(con)
 
-for ticker in ["PETR4.SA", "XXXX4.SA"]:
-    try:
-        df = buscar_historico(ticker)
-        print(df.tail(3))
-        print(df.columns)
+    for ticker in results:
+        if results[ticker] is False:
+            print(f"Não foi possível atualizar {ticker}.")
 
-    except DadosIndisponiveisisError as e:
-        print(f"Erro: {e}")
+    con.close()
+
+def show_summary() -> None:
+    con = connect()
+
+    summary = get_summary(con)
+    if summary.empty:
+        print("Não há ativos cadastrados na sua sessão.")
+    else:
+        print(format_summary(summary).to_string(index=False))
+
+    con.close()
+
+def main() -> None:
+    update_database()
+    show_summary()
+
+
+if __name__ == "__main__":
+    main()
