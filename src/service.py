@@ -14,6 +14,18 @@ class Status(Enum):
     NOT_FOUND = "not_found"
     UNAVAILABLE = "unavailable"
 
+
+def _register_ticker(con: DuckDBPyConnection, ticker: str, nome: str, df: pd.DataFrame) -> None:
+    con.begin()
+    try:
+        populate_dim_ticker(con, ticker=[(ticker,nome)])
+        save_quotes(con, df)
+        con.commit()
+
+    except BaseException:
+        con.rollback()
+        raise
+
 def _precisa_rebaixar(df: pd.DataFrame) -> bool:
     if (df["Dividends"] > 0).any() or (df["Stock Splits"] > 0).any():
         return True
@@ -46,6 +58,7 @@ def add_tickers(con: DuckDBPyConnection, raws: str | list[str], periodo: str = "
     for i, ticker in enumerate(tickers):
         try:
             df = buscar_historico(ticker, periodo)
+
         except TickerNaoEncontradoError:
             results[ticker] = Status.NOT_FOUND
             falhas = 0
@@ -63,10 +76,9 @@ def add_tickers(con: DuckDBPyConnection, raws: str | list[str], periodo: str = "
             continue
 
         nome = buscar_nome(ticker)
-        populate_dim_ticker(con, [(ticker, nome)])
-
         df = preparar_cotacoes(df, ticker)
-        save_quotes(con, df)
+
+        _register_ticker(con, ticker, nome, df)        
 
         results[ticker] = Status.OK
         falhas = 0
