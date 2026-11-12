@@ -2,13 +2,33 @@ import yfinance as yf
 import pandas as pd
 from datetime import date
 
-def buscar_historico(ticker: str, periodo: str = "10y", inicio: date | None = None) -> pd.DataFrame | None:
-    if inicio is None:
-        df = yf.Ticker(ticker).history(period=periodo, auto_adjust=True)
-    else:
-        df = yf.Ticker(ticker).history(start=inicio, auto_adjust=True)
+from yfinance.exceptions import YFRateLimitError, YFTickerMissingError
+from curl_cffi.requests.exceptions import HTTPError, RequestException
 
-    return df if not df.empty else None
+from ..errors import TickerNaoEncontradoError, FonteIndisponivelError
+
+#configura para o yf não ignorar erros
+yf.config.debug.hide_exceptions = False
+
+def buscar_historico(ticker: str, periodo: str = "10y", inicio: date | None = None) -> pd.DataFrame:
+    try:
+        if inicio is None:
+            df = yf.Ticker(ticker).history(period=periodo, auto_adjust=True)
+        else:
+            df = yf.Ticker(ticker).history(start=inicio, auto_adjust=True)
+    except YFTickerMissingError as e:
+        raise TickerNaoEncontradoError(f"Ticker '{ticker}' não encontrado.") from e
+    except HTTPError as e:
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        if status == 404:
+            raise TickerNaoEncontradoError(f"Ticker '{ticker}' não encontrado.") from e
+        raise FonteIndisponivelError(f"Yahoo finance indisponível ao buscar '{ticker}' (HTTP {status}).")
+    except (YFRateLimitError, RequestException) as e:
+        raise FonteIndisponivelError(f"Yahoo finance indisponível ao buscar '{ticker}' ({type(e).__name__}).") from e
+    if df.empty:
+        raise TickerNaoEncontradoError(f"Nenhum dado retornado para '{ticker}.'")
+    
+    return df
 
 def preparar_cotacoes(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
     df = df.reset_index()
@@ -29,6 +49,9 @@ def preparar_cotacoes(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
     return df[["ticker", "date", "open", "high", "low", "close", "volume"]]
 
 def buscar_nome(ticker: str) -> str:
-    info = yf.Ticker(ticker).info
-
+    try:
+        info = yf.Ticker(ticker).info
+    except (YFRateLimitError, RequestException):
+        return ticker
+    
     return info.get("longName") or info.get("shortName") or ticker

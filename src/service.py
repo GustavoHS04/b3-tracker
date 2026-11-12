@@ -5,6 +5,8 @@ from .sources.yahoo import buscar_historico, buscar_nome, preparar_cotacoes
 from .database.populate_db import populate_dim_ticker, save_quotes
 from .database.queries import get_last_date, list_tickers, get_first_date
 
+from .errors import TickerNaoEncontradoError
+
 def _precisa_rebaixar(df: pd.DataFrame) -> bool:
     if (df["Dividends"] > 0).any() or (df["Stock Splits"] > 0).any():
         return True
@@ -28,8 +30,9 @@ def add_tickers(con: DuckDBPyConnection, raws: str | list[str], periodo: str = "
             continue
 
         ticker = _normalize_ticker(raw)
-        df = buscar_historico(ticker, periodo)
-        if df is None:
+        try:
+            df = buscar_historico(ticker, periodo)
+        except TickerNaoEncontradoError:
             results[ticker] = False
             continue
 
@@ -45,15 +48,14 @@ def add_tickers(con: DuckDBPyConnection, raws: str | list[str], periodo: str = "
 
 def update_ticker(con: DuckDBPyConnection, ticker: str) -> bool:
     last = get_last_date(con, ticker)
-    df = buscar_historico(ticker, inicio=last)
-    if df is None:
-        return False
+    try:
+        df = buscar_historico(ticker, inicio=last)
 
-    if last is not None and _precisa_rebaixar(df):
-        first = get_first_date(con, ticker)
-        df = buscar_historico(ticker, inicio=first)
-        if df is None:
-            return False
+        if last is not None and _precisa_rebaixar(df):
+            first = get_first_date(con, ticker)
+            df = buscar_historico(ticker, inicio=first)
+    except TickerNaoEncontradoError:
+        return False
         
     df = preparar_cotacoes(df, ticker)
     save_quotes(con, df)
