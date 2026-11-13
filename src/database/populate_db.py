@@ -19,8 +19,8 @@ def populate_dim_date(con: DuckDBPyConnection, inicio: str, fim: str) -> None:
         SELECT CAST(date AS DATE), year, month, week_day FROM df
     """)
 
-def populate_dim_ticker(con: DuckDBPyConnection, ticker: list[tuple[str, str]]) -> None:
-    df = pd.DataFrame(ticker, columns=["ticker", "name"])
+def populate_dim_ticker(con: DuckDBPyConnection, tickers: list[tuple[str, str]]) -> None:
+    df = pd.DataFrame(tickers, columns=["ticker", "name"])
 
     con.execute("""
         INSERT OR IGNORE INTO dim_ticker (ticker, name)
