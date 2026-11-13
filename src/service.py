@@ -8,7 +8,7 @@ from .sources.yahoo import buscar_historico, buscar_nome, preparar_cotacoes
 from .database.populate_db import populate_dim_ticker, save_quotes
 from .database.queries import get_last_date, list_tickers, get_first_date
 
-from .config import MAX_FALHAS_SEGUIDAS
+from .config import MAX_FALHAS_SEGUIDAS, TICKER_MIN_LEN, TICKER_MAX_LEN
 from .errors import TickerNaoEncontradoError, FonteIndisponivelError
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,20 @@ class Status(Enum):
     OK = "ok"
     NOT_FOUND = "not_found"
     UNAVAILABLE = "unavailable"
+    INVALID = "invalid"
 
+
+def _is_valid_ticker(raw: str) -> bool:
+    text = raw.strip()
+    if not text.isascii():
+        return False
+
+    base = text.upper().removesuffix(".SA")
+    return (
+        base.isalnum()
+        and TICKER_MIN_LEN <= len(base) <= TICKER_MAX_LEN
+        and base[-1].isdigit()
+    )
 
 def _register_ticker(con: DuckDBPyConnection, ticker: str, nome: str, df: pd.DataFrame) -> None:
     con.begin()
@@ -50,9 +63,11 @@ def add_tickers(con: DuckDBPyConnection, raws: str | list[str], periodo: str = "
 
     ordem = []
     for raw in raws:
-        if not raw.strip():
-            results[raw] = Status.NOT_FOUND
+        if not _is_valid_ticker(raw):
+            logger.warning("Ticker inválido: %r", raw[:50])
+            results[raw] = Status.INVALID
             ordem.append(raw)
+
         else:
             ticker = _normalize_ticker(raw)
             tickers.append(ticker)
@@ -76,7 +91,7 @@ def add_tickers(con: DuckDBPyConnection, raws: str | list[str], periodo: str = "
             if falhas >= MAX_FALHAS_SEGUIDAS:
                 restantes = tickers[i + 1:]
                 logger.warning("Fonte indisponível %d vezes seguidas; pulando %d ativos", falhas, len(restantes))
-                for rest in tickers[i + 1:]:
+                for rest in restantes:
                     results[rest] = Status.UNAVAILABLE
 
                 break
@@ -134,7 +149,7 @@ def update_all(con: DuckDBPyConnection) -> dict[str, Status]:
 
         if falhas >= MAX_FALHAS_SEGUIDAS:
             restantes = tickers[i + 1:]
-            logger.warning("fonte indisponível %d vezes seguidas; pulando %d ativos", falhas, len(restantes))
+            logger.warning("Fonte indisponível %d vezes seguidas; pulando %d ativos", falhas, len(restantes))
             for rest in restantes:
                 results[rest] = Status.UNAVAILABLE
             break

@@ -20,7 +20,9 @@ def update_database() -> None:
             if status is Status.UNAVAILABLE:
                print(f"Yahoo finance está atualmente indisponível para {ticker}.")
             elif status is Status.NOT_FOUND:
-                print(f"O ticker '{ticker}' não foi encontrado.")
+                print(f"O ticker '{ticker[:30]}' não foi encontrado.")
+            elif status is Status.INVALID:
+                print(f"O ticker '{ticker}' é inválido.")
 
 def show_summary() -> None:
     with connect() as con:
