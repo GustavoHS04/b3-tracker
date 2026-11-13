@@ -8,13 +8,14 @@ from .sources.yahoo import buscar_historico, buscar_nome, preparar_cotacoes
 from .database.populate_db import populate_dim_ticker, save_quotes
 from .database.queries import get_last_date, list_tickers, get_first_date
 
-from .config import MAX_FALHAS_SEGUIDAS, TICKER_MIN_LEN, TICKER_MAX_LEN
-from .errors import TickerNaoEncontradoError, FonteIndisponivelError
+from .config import MAX_FALHAS_SEGUIDAS, TICKER_MIN_LEN, TICKER_MAX_LEN, MAX_TICKERS_POR_VEZ
+from .errors import TickerNaoEncontradoError, FonteIndisponivelError, LimiteExcedidoError
 
 logger = logging.getLogger(__name__)
 
 class Status(Enum):
     OK = "ok"
+    EXISTS = "exists"
     NOT_FOUND = "not_found"
     UNAVAILABLE = "unavailable"
     INVALID = "invalid"
@@ -58,10 +59,15 @@ def _normalize_ticker(raw: str) -> str:
 
 def add_tickers(con: DuckDBPyConnection, raws: str | list[str], periodo: str = "10y") -> dict[str, Status]:
     raws = [raws] if isinstance(raws, str) else raws
+    if len(raws) > MAX_TICKERS_POR_VEZ:
+        raise LimiteExcedidoError(f"Limite de {MAX_TICKERS_POR_VEZ} tickers de uma só vez: {len(raws)} recebidos.")
+
+    existentes = set(list_tickers(con))
+    vistos = set()
     results = {}
     tickers = []
-
     ordem = []
+
     for raw in raws:
         if not _is_valid_ticker(raw):
             logger.warning("Ticker inválido: %r", raw[:50])
@@ -70,8 +76,17 @@ def add_tickers(con: DuckDBPyConnection, raws: str | list[str], periodo: str = "
 
         else:
             ticker = _normalize_ticker(raw)
-            tickers.append(ticker)
+            if ticker in vistos:
+                logger.info("Ticker %s duplicado na entrada", ticker)
+                continue
+
+            vistos.add(ticker)
             ordem.append(ticker)
+            if ticker in existentes:
+                logger.info("Ticker %s já está cadastrado", ticker)
+                results[ticker] = Status.EXISTS
+            else:
+                tickers.append(ticker)
 
     falhas = 0
     for i, ticker in enumerate(tickers):

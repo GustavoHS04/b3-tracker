@@ -12,9 +12,10 @@ DATA_FIM    = "2035-12-31"
 # (Metodologia de verificação será alterada posteriormente)
 MAX_FALHAS_SEGUIDAS = 3
 
-# Define a quantidade de caracteres em um ticker determinado como válido
+# Define limites dos tickers
 TICKER_MIN_LEN = 4
 TICKER_MAX_LEN = 8
+MAX_TICKERS_POR_VEZ = 10
 
 # Logging configs
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"

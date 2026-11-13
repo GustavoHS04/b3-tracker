@@ -1,3 +1,6 @@
+class LimiteExcedidoError(ValueError):
+    """Mais tickers numa mensagem do que o permitido."""
+
 class FonteError(Exception):
     """Erro ao obter dados da fonte."""
 
