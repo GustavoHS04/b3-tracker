@@ -7,10 +7,13 @@ from yfinance.exceptions import YFRateLimitError, YFTickerMissingError
 from curl_cffi.requests.exceptions import HTTPError, RequestException
 
 from ..errors import TickerNaoEncontradoError, FonteIndisponivelError
+from ..config import YF_RETRIES
 
 logger = logging.getLogger(__name__)
-#configura para o yf não ignorar erros
+
+# Configura para o yf não ignorar erros
 yf.config.debug.hide_exceptions = False
+yf.config.network.retries = YF_RETRIES
 
 def buscar_historico(ticker: str, periodo: str = "10y", inicio: date | None = None) -> pd.DataFrame:
     try:
@@ -25,7 +28,7 @@ def buscar_historico(ticker: str, periodo: str = "10y", inicio: date | None = No
         if status == 404:
             raise TickerNaoEncontradoError(f"Ticker '{ticker}' não encontrado.") from e
         raise FonteIndisponivelError(f"Yahoo Finance indisponível ao buscar '{ticker}' (HTTP {status}).") from e
-    except (YFRateLimitError, RequestException) as e:
+    except (YFRateLimitError, RequestException, TimeoutError, ConnectionError) as e:
         raise FonteIndisponivelError(f"Yahoo Finance indisponível ao buscar '{ticker}' ({type(e).__name__}).") from e
     if df.empty:
         raise TickerNaoEncontradoError(f"Nenhum dado retornado para '{ticker}'.")
@@ -53,7 +56,7 @@ def preparar_cotacoes(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
 def buscar_nome(ticker: str) -> str:
     try:
         info = yf.Ticker(ticker).info
-    except (YFRateLimitError, RequestException):
+    except (YFRateLimitError, RequestException, TimeoutError, ConnectionError):
         logger.warning("Nome de %s indisponível; usando o ticker como nome", ticker)
         return ticker
     

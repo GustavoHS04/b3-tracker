@@ -3,7 +3,7 @@ from pathlib import Path
 import logging
 from logging.handlers import RotatingFileHandler
 
-from .config import LOG_DIR, LOG_FILE, LOG_MAX_BYTES, LOG_BACKUPS
+from .config import LOG_DIR, LOG_FILE, LOG_MAX_BYTES, LOG_BACKUPS, NOISY_LOGGERS, LIBS_LOG_LEVEL
 
 def setup_logging(log_file: Path = LOG_FILE) -> None:
     LOG_DIR.parent.mkdir(parents=True, exist_ok=True)
@@ -24,3 +24,6 @@ def setup_logging(log_file: Path = LOG_FILE) -> None:
     root.setLevel(logging.DEBUG)
     root.addHandler(file_handler)
     root.addHandler(console)
+
+    for name in NOISY_LOGGERS:
+        logging.getLogger(name).setLevel(LIBS_LOG_LEVEL)
