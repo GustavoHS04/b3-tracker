@@ -34,3 +34,6 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 TELEGRAM_TIMEOUT = 15
 TELEGRAM_MAX_CHARS = 4000
+
+# Configurações adicionais
+DIAS_UTEIS_ANO = 252 # Utilizado para cálculos de anualização

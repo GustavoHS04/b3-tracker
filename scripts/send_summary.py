@@ -3,7 +3,7 @@ import asyncio, logging, sys
 from src.logging_config import setup_logging
 from src.bot.client import send_message
 from src.database.connect_db import connect
-from src.service import load_summary
+from src.database.queries import get_summary
 from src.bot.messages import build_summary_blocks, split_message
 
 from src.config import TELEGRAM_MAX_CHARS
@@ -19,7 +19,7 @@ async def _send_all(messages: list[str]) -> None:
 def main() -> int:
     setup_logging()
     with connect() as con:
-        df = load_summary(con)
+        df = get_summary(con)
     if df.empty:
         logger.warning("Nenhum ativo cadastrado; nada a enviar")
         return 0
