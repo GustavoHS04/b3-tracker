@@ -1,8 +1,6 @@
 from src.database.bootstrap_db import bootstrap_db
-from src.database.queries import get_summary
 from src.database.connect_db import connect
-from src.summary import format_summary
-from src.service import update_all, Status
+from src.service import load_summary, update_all, Status
 
 import time
 from src.logging_config import setup_logging
@@ -26,11 +24,11 @@ def update_database() -> None:
 
 def show_summary() -> None:
     with connect() as con:
-        summary = get_summary(con)
+        summary = load_summary(con)
         if summary.empty:
             print("Não há ativos cadastrados.")
         else:
-            print(format_summary(summary).to_string(index=False))
+            print(summary.to_string(index=False))
 
 def main() -> None:
     setup_logging()

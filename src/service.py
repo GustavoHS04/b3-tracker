@@ -6,7 +6,8 @@ import logging
 
 from .sources.yahoo import buscar_historico, buscar_nome, preparar_cotacoes
 from .database.populate_db import populate_dim_ticker, save_quotes
-from .database.queries import get_last_date, list_tickers, get_first_date
+from .database.queries import get_last_date, list_tickers, get_first_date, get_summary
+from .summary import format_summary
 
 from .config import MAX_FALHAS_SEGUIDAS, TICKER_MIN_LEN, TICKER_MAX_LEN, MAX_TICKERS_POR_VEZ
 from .errors import TickerNaoEncontradoError, FonteIndisponivelError, LimiteExcedidoError
@@ -171,3 +172,7 @@ def update_all(con: DuckDBPyConnection) -> dict[str, Status]:
 
     logger.info("Resumo da atualização: %s", dict(Counter(s.name for s in results.values())))
     return results
+
+def load_summary(con: DuckDBPyConnection) -> pd.DataFrame:
+    summary = get_summary(con)
+    return summary if summary.empty else format_summary(summary)
