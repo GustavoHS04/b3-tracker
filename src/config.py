@@ -26,8 +26,14 @@ LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
 LOG_FILE = LOG_DIR / "b3_tracker.log"
 LOG_MAX_BYTES = 1_000_000
 LOG_BACKUPS = 5
-NOISY_LOGGERS = ("peewee", "yfinance", "httpx")
-LIBS_LOG_LEVEL = logging.WARNING
+LIB_LOG_LEVELS = {
+    "yfinance": logging.WARNING,
+    "peewee": logging.WARNING,
+    "httpx": logging.WARNING,
+    "httpcore": logging.WARNING,
+    "telegram": logging.INFO,
+    "asyncio": logging.WARNING,
+}
 
 # Configurações do Telegram
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
