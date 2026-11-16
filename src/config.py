@@ -1,5 +1,10 @@
+import os
+from dotenv import load_dotenv
 from pathlib import Path
 import logging
+
+# Carregamento do env
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 # Configurações do banco de dados
 DATABASE_PATH = Path(__file__).resolve().parent.parent / "data" / "b3.duckdb"
@@ -21,5 +26,10 @@ LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
 LOG_FILE = LOG_DIR / "b3_tracker.log"
 LOG_MAX_BYTES = 1_000_000
 LOG_BACKUPS = 5
-NOISY_LOGGERS = ("peewee", "yfinance")
+NOISY_LOGGERS = ("peewee", "yfinance", "httpx")
 LIBS_LOG_LEVEL = logging.WARNING
+
+# Configurações do Telegram
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+TELEGRAM_TIMEOUT = 15
