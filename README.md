@@ -1,19 +1,21 @@
 # B3 Tracker
 
 Um rastreador enxuto de cotações da B3: atualiza os ativos cadastrados, calcula
-indicadores básicos e mostra um resumo direto no terminal. Sem dashboard por
-enquanto — primeiro, uma base local confiável e fácil de consultar. 📈
+indicadores básicos e mostra um resumo no terminal ou pelo Telegram, a partir de
+uma base local confiável e fácil de consultar. 📈
 
 ## O que já faz
 
 - Busca histórico de cotações de ativos brasileiros usando o Yahoo Finance.
 - Guarda cotações diárias e cadastro de ativos em um banco DuckDB local.
-- Atualiza os ativos que já estão cadastrados, buscando dados desde a última
-  data disponível.
+- Cadastra ativos com validação do ticker, sem duplicar os que já existem.
+- Atualiza os ativos cadastrados, buscando dados desde a última data disponível.
 - Calcula retorno diário, média móvel de 20 pregões, volatilidade anualizada e
   drawdown.
 - Imprime no terminal uma linha por ativo, ordenada pelo ticker.
-- Mostra um aviso quando ainda não há ativos cadastrados.
+- Envia o resumo dos ativos por mensagem no Telegram.
+- Mantém um bot do Telegram que responde apenas ao dono configurado.
+- Registra a execução em arquivo de log com rotação.
 
 > O projeto está em desenvolvimento. A saída é informativa e não constitui
 > recomendação de investimento.
@@ -22,6 +24,8 @@ enquanto — primeiro, uma base local confiável e fácil de consultar. 📈
 
 - Python e `pip`.
 - Dependências e versões fixadas em [`requirements.txt`](requirements.txt).
+- Para os recursos do Telegram: um bot criado pelo
+  [@BotFather](https://t.me/BotFather) e o seu `chat_id`.
 
 Na raiz do repositório, instale as dependências:
 
@@ -29,9 +33,40 @@ Na raiz do repositório, instale as dependências:
 python -m pip install -r requirements.txt
 ```
 
+## Configuração
+
+As configurações sensíveis ficam em um arquivo `.env` na raiz do repositório
+(ignorado pelo Git). Use [`.env.example`](.env.example) como modelo:
+
+```bash
+cp .env.example .env
+```
+
+| Variável           | Uso                                                     |
+| ------------------ | ------------------------------------------------------- |
+| `TELEGRAM_TOKEN`   | Token do bot, fornecido pelo @BotFather.                |
+| `TELEGRAM_CHAT_ID` | Conversa que recebe o resumo e única autorizada no bot. |
+
+As variáveis só são exigidas pelos recursos do Telegram; `main.py` funciona sem
+elas. Quando uma delas falta, o programa informa quais estão ausentes.
+
+Para descobrir o seu `chat_id`, preencha o `TELEGRAM_TOKEN`, mande `/start` ao
+seu bot e rode:
+
+```bash
+python -m scripts.get_chat_id
+```
+
+As demais configurações (caminho do banco, limites de cadastro, tentativas de
+rede, logging) ficam em [`src/config.py`](src/config.py).
+
 ## Executar
 
-Na raiz do repositório, rode:
+Todos os comandos devem ser rodados na raiz do repositório. Os scripts da pasta
+`scripts/` são executados como módulos (`python -m scripts.<nome>`), para que
+os imports de `src` funcionem.
+
+### Atualizar e ver o resumo no terminal
 
 ```bash
 python main.py
@@ -39,7 +74,32 @@ python main.py
 
 O programa atualiza os ativos registrados e imprime o resumo mais recente. Na
 primeira execução, o banco e suas tabelas são criados automaticamente em
-`data/b3.duckdb`.
+`data/b3.duckdb`. Ativos não encontrados, inválidos ou com a fonte indisponível
+são avisados no terminal, sem interromper a atualização dos demais.
+
+### Enviar o resumo pelo Telegram
+
+```bash
+python -m scripts.send_summary
+```
+
+Lê o resumo já guardado no banco e o envia ao `TELEGRAM_CHAT_ID`. Esse comando
+**não atualiza** as cotações: rode `main.py` antes para enviar dados recentes.
+Resumos longos são divididos em mais de uma mensagem para respeitar o limite de
+tamanho do Telegram.
+
+Para apenas testar a conexão com o bot, `python -m scripts.send_test` envia a
+mensagem "teste".
+
+### Bot do Telegram
+
+```bash
+python -m scripts.run_bot
+```
+
+Inicia o bot em modo *polling*. Por enquanto ele responde ao comando `/start`,
+e somente na conversa definida em `TELEGRAM_CHAT_ID`; mensagens de outras
+conversas são ignoradas.
 
 ## Cadastro e escopo dos dados
 
@@ -49,21 +109,41 @@ de ativos está disponível pela função `add_tickers` em `src/service.py`. Por
 exemplo, a partir da raiz:
 
 ```python
+from src.database.bootstrap_db import bootstrap_db
 from src.database.connect_db import connect
 from src.service import add_tickers
 
-con = connect(read_only=False)
-try:
+with connect(read_only=False) as con:
+    bootstrap_db(con)  # cria as tabelas, caso o banco ainda não exista
     print(add_tickers(con, ["PETR4", "VALE3"]))
-finally:
-    con.close()
 ```
+
+Regras do cadastro:
+
+- O ticker precisa ter de 4 a 8 caracteres alfanuméricos e terminar em dígito.
+  O sufixo `.SA` é adicionado automaticamente quando ausente.
+- No máximo 10 tickers por chamada.
+- Tickers repetidos na entrada são considerados uma vez; os já cadastrados não
+  são buscados de novo.
+- Cada ativo é gravado em uma transação: ou entram o cadastro e as cotações, ou
+  nada é salvo.
+
+A função devolve o resultado de cada ticker:
+
+| Status        | Significado                                   |
+| ------------- | --------------------------------------------- |
+| `OK`          | Cadastrado com sucesso.                       |
+| `EXISTS`      | Já estava cadastrado.                         |
+| `INVALID`     | Formato de ticker inválido.                   |
+| `NOT_FOUND`   | Ticker sem dados no Yahoo Finance.            |
+| `UNAVAILABLE` | Fonte indisponível (rede, bloqueio ou limite). |
+
+Se a fonte ficar indisponível 3 vezes seguidas, os ativos restantes são marcados
+como `UNAVAILABLE` sem novas tentativas. A mesma regra vale para a atualização.
 
 O cadastro busca aproximadamente **10 anos de histórico** por ativo. Essa
 decisão mantém o banco proporcional aos ativos que a pessoa escolheu acompanhar,
-em vez de acumular cotações de todo o mercado. Uma solução para ampliar a
-escala — por exemplo, ingestão mais abrangente ou armazenamento histórico maior
-— fica para uma etapa futura.
+em vez de acumular cotações de todo o mercado.
 
 ## Fonte de dados e ajustes
 
@@ -96,23 +176,50 @@ portanto, não elimina as limitações da fonte não oficial.
 - **Retorno diário:** variação percentual do fechamento em relação ao pregão
   anterior.
 - **Média móvel:** média dos últimos 20 pregões.
-- **Volatilidade anualizada:** desvio-padrão amostral dos retornos diários,
-  anualizado usando `√252`.
+- **Volatilidade anualizada:** desvio-padrão amostral dos retornos diários dos
+  últimos 20 pregões, anualizado usando `√252`.
 - **Drawdown:** distância percentual do fechamento atual em relação ao maior
   fechamento observado na série do ativo.
 
 Os indicadores usam as cotações ajustadas disponíveis no banco. O resumo exibe
 o registro mais recente de cada ativo.
 
+## Banco de dados
+
+O banco DuckDB em `data/b3.duckdb` tem três tabelas:
+
+- `dim_date`: calendário diário de 2016-01-01 a 2035-12-31.
+- `dim_ticker`: ativos cadastrados e seus nomes.
+- `daily_quotes`: cotações diárias (abertura, máxima, mínima, fechamento e
+  volume) por ativo e data.
+
+## Logs
+
+Cada execução registra eventos em `logs/b3_tracker.log` (nível `DEBUG`) e no
+terminal (nível `INFO`). O arquivo é rotacionado ao atingir cerca de 1 MB,
+mantendo até 5 cópias anteriores. Os logs de bibliotecas externas são reduzidos
+para evitar ruído.
+
 ## Estrutura
 
 ```text
-main.py                 # Atualiza o banco e exibe o resumo
+main.py                 # Atualiza o banco e exibe o resumo no terminal
+scripts/
+  send_summary.py       # Envia o resumo pelo Telegram
+  run_bot.py            # Inicia o bot do Telegram
+  get_chat_id.py        # Descobre o chat_id da conversa com o bot
+  send_test.py          # Envia uma mensagem de teste
 src/
+  config.py             # Configurações e leitura do .env
   service.py            # Cadastro e atualização dos ativos
   summary.py            # Formatação dos valores para o terminal
+  errors.py             # Exceções do projeto
+  logging_config.py     # Configuração dos logs
   sources/yahoo.py      # Coleta e preparação dos dados do Yahoo Finance
   database/             # Conexão, esquema, carga e consultas DuckDB
+  bot/                  # Cliente, bot e mensagens do Telegram
 data/
   b3.duckdb             # Banco local criado na execução
+logs/
+  b3_tracker.log        # Log da aplicação
 ```
