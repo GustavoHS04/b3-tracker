@@ -4,6 +4,7 @@ import logging
 import asyncio
 
 from ..database.connect_db import connect
+from ..database.bootstrap_db import ensure_db
 from ..service import add_tickers, Status
 from ..errors import ConfiguracaoError, LimiteExcedidoError
 from ..config import MAX_TICKERS_POR_VEZ
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 def _add_blocking(raws: list[str]) -> dict[str, Status]:
     with connect(read_only=False) as con:
+        ensure_db(con)
         return add_tickers(con, raws)
 
 async def _on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -58,7 +60,7 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply(update, "Cadastrando, pode demorar um pouco...")
     try:
         results = await asyncio.to_thread(_add_blocking, raws)
-        
+
     except LimiteExcedidoError:
         await _reply(update, f"Mande até {MAX_TICKERS_POR_VEZ} tickers por vez.")
         return

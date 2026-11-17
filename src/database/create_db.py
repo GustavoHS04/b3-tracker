@@ -1,5 +1,7 @@
 from duckdb import DuckDBPyConnection
 
+REQUIRED_TABLES = frozenset({"dim_date", "dim_ticker", "daily_quotes"})
+
 def _create_dim_date(con: DuckDBPyConnection) -> None:
     con.execute("""
         CREATE TABLE IF NOT EXISTS dim_date (
