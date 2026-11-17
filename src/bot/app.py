@@ -34,14 +34,6 @@ async def _reply(update: Update, text: str) -> None:
     
     await message.reply_text(text)
 
-async def _test_job(context: ContextTypes.DEFAULT_TYPE) -> None:
-    job = context.job
-    if job is None or job.chat_id is None:
-        logger.warning("Tarefa de teste sem chat_id")
-        return
-    
-    await context.bot.send_message(chat_id=job.chat_id, text="Teste de agendamento")
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply(update, "Olá! Eu sou o InvestiBot, eu te ajudo a manter controle dos seus ativos.")
 
@@ -64,15 +56,6 @@ def build_application() -> Application:
 
     tz = ZoneInfo(TIMEZONE)
     run_at = (datetime.now(tz) + timedelta(minutes=2)).timetz().replace(second=0,microsecond=0)
-    job_queue.run_once(_test_job, when=10, chat_id=owner_id, name="teste")
-    job_queue.run_daily(
-        _test_job,
-        time=run_at,
-        days=(0, 1, 2, 3, 4, 5, 6),
-        chat_id=owner_id,
-        name="teste_diario"
-    )
-    logger.info("Teste diário agendado para %s", run_at.strftime("%H:%M"))
 
     return app
 
