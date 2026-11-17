@@ -1,6 +1,7 @@
 import pandas as pd
 
 from ..config import DIAS_UTEIS_ANO
+from ..service import Status
 
 EMOJI_TITLE = "\N{BAR CHART}"
 EMOJI_TICKER = "\N{SMALL BLUE DIAMOND}"
@@ -8,6 +9,13 @@ EMOJI_UP = "\N{CHART WITH UPWARDS TREND}"
 EMOJI_DOWN = "\N{CHART WITH DOWNWARDS TREND}"
 EMOJI_FLAT = "\N{HEAVY MINUS SIGN}"
 
+STATUS_TEXT = {
+    Status.OK: "Ticker cadastrado com sucesso!",
+    Status.EXISTS: "Ticker já está na lista de cadastros.",
+    Status.NOT_FOUND: "Ticker não encontrado.",
+    Status.UNAVAILABLE: "Fonte indisponível, tente novamente mais tarde.",
+    Status.INVALID: "Formato inválido."
+}
 
 def _tg_len(text: str) -> int:
     return len(text.encode("utf-16-le")) // 2
@@ -75,3 +83,11 @@ def split_message(blocks: list[str], limit: int) -> list[str]:
         messages.append(current)
 
     return messages
+
+def format_add_results(results: dict[str, Status]) -> str:
+    lines = []
+    for key, status in results.items():
+        label = key.removesuffix(".SA")[:30]
+        lines.append(f"{label}: {STATUS_TEXT[status]}")
+
+    return "\n".join(lines)
