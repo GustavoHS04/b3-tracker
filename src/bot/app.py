@@ -1,3 +1,6 @@
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, filters
 import logging
@@ -7,7 +10,7 @@ from ..database.connect_db import connect
 from ..database.bootstrap_db import ensure_db
 from ..service import add_tickers, Status
 from ..errors import ConfiguracaoError, LimiteExcedidoError
-from ..config import MAX_TICKERS_POR_VEZ
+from ..config import MAX_TICKERS_POR_VEZ, TIMEZONE
 from .settings import require_telegram_config
 from .messages import format_add_results
 
@@ -31,9 +34,16 @@ async def _reply(update: Update, text: str) -> None:
     
     await message.reply_text(text)
 
+async def _test_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    job = context.job
+    if job is None or job.chat_id is None:
+        logger.warning("Tarefa de teste sem chat_id")
+        return
+    
+    await context.bot.send_message(chat_id=job.chat_id, text="Teste de agendamento")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply(update, "Olá! Eu sou o InvestiBot, eu te ajudo a manter controle dos seus ativos.")
-
 
 def build_application() -> Application:
     token, chat_id = require_telegram_config()
@@ -47,6 +57,22 @@ def build_application() -> Application:
     app.add_handler(CommandHandler("start", start, filters=only_owner))
     app.add_handler(CommandHandler("add", add, filters=only_owner))
     app.add_error_handler(_on_error)
+
+    job_queue = app.job_queue
+    if job_queue is None:
+        raise ConfiguracaoError("JobQueue indisponível: instale python-telegram-bot[job-queue].")
+
+    tz = ZoneInfo(TIMEZONE)
+    run_at = (datetime.now(tz) + timedelta(minutes=2)).timetz().replace(second=0,microsecond=0)
+    job_queue.run_once(_test_job, when=10, chat_id=owner_id, name="teste")
+    job_queue.run_daily(
+        _test_job,
+        time=run_at,
+        days=(0, 1, 2, 3, 4, 5, 6),
+        chat_id=owner_id,
+        name="teste_diario"
+    )
+    logger.info("Teste diário agendado para %s", run_at.strftime("%H:%M"))
 
     return app
 

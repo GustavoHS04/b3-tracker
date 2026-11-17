@@ -43,3 +43,4 @@ TELEGRAM_MAX_CHARS = 4000
 
 # Configurações adicionais
 DIAS_UTEIS_ANO = 252 # Utilizado para cálculos de anualização
+TIMEZONE = "America/Sao_Paulo"
