@@ -1,4 +1,3 @@
-from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from telegram import Update
@@ -10,9 +9,11 @@ from ..database.connect_db import connect
 from ..database.bootstrap_db import ensure_db
 from ..service import add_tickers, Status
 from ..errors import ConfiguracaoError, LimiteExcedidoError
-from ..config import MAX_TICKERS_POR_VEZ, TIMEZONE
+from ..config import MAX_TICKERS_POR_VEZ, TIMEZONE, CLOSING_TIME
 from .settings import require_telegram_config
 from .messages import format_add_results
+from .jobs import closing_job
+from .locks import DB_LOCK
 
 logger = logging.getLogger(__name__)
 
@@ -53,10 +54,15 @@ def build_application() -> Application:
     job_queue = app.job_queue
     if job_queue is None:
         raise ConfiguracaoError("JobQueue indisponível: instale python-telegram-bot[job-queue].")
-
-    tz = ZoneInfo(TIMEZONE)
-    run_at = (datetime.now(tz) + timedelta(minutes=2)).timetz().replace(second=0,microsecond=0)
-
+    
+    job_queue.run_daily(
+        closing_job,
+        time=CLOSING_TIME.replace(tzinfo=ZoneInfo(TIMEZONE)),
+        days=(1,2,3,4,5), # domigo = 0
+        chat_id=owner_id,
+        name="fechamento"
+    )
+    
     return app
 
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -68,7 +74,8 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     await _reply(update, "Cadastrando, pode demorar um pouco...")
     try:
-        results = await asyncio.to_thread(_add_blocking, raws)
+        async with DB_LOCK:
+            results = await asyncio.to_thread(_add_blocking, raws)
 
     except LimiteExcedidoError:
         await _reply(update, f"Mande até {MAX_TICKERS_POR_VEZ} tickers por vez.")

@@ -1,6 +1,6 @@
 import pandas as pd
 
-from ..config import DIAS_UTEIS_ANO
+from ..config import DIAS_UTEIS_ANO, TELEGRAM_MAX_CHARS
 from ..service import Status
 
 EMOJI_TITLE = "\N{BAR CHART}"
@@ -60,6 +60,9 @@ def build_summary_blocks(df: pd.DataFrame) -> list[str]:
         )
 
     return blocks
+
+def build_summary_messages(df: pd.DataFrame) -> list[str]:
+    return split_message(build_summary_blocks(df), TELEGRAM_MAX_CHARS)
 
 def split_message(blocks: list[str], limit: int) -> list[str]:
     messages = []

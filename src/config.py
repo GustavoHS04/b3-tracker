@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from pathlib import Path
+from datetime import time
 import logging
 
 # Carregamento do env
@@ -33,6 +34,7 @@ LIB_LOG_LEVELS = {
     "httpcore": logging.WARNING,
     "telegram": logging.INFO,
     "asyncio": logging.WARNING,
+    "apscheduler": logging.INFO,
 }
 
 # Configurações do Telegram
@@ -41,6 +43,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 TELEGRAM_TIMEOUT = 15
 TELEGRAM_MAX_CHARS = 4000
 
-# Configurações adicionais
+# Configurações dos ativos
 DIAS_UTEIS_ANO = 252 # Utilizado para cálculos de anualização
 TIMEZONE = "America/Sao_Paulo"
+CLOSING_TIME = time(18, 30)
