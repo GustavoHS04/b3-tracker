@@ -29,6 +29,22 @@ def populate_dim_ticker(con: DuckDBPyConnection, tickers: list[tuple[str, str]])
 
 def save_quotes(con: DuckDBPyConnection, df: pd.DataFrame) -> None:
     con.execute("""
-        INSERT OR REPLACE INTO daily_quotes (ticker, date, open, high, low, close, volume)
-        SELECT ticker, date, open, high, low, close, volume FROM df
+        INSERT INTO daily_quotes (ticker, date, open, high, low, close, volume)
+        (
+            SELECT
+                ticker,
+                date,
+                CASE WHEN open > 0 THEN open    END,
+                CASE WHEN open > 0 THEN high    END,
+                CASE WHEN open > 0 THEN low     END,
+                close,
+                CASE WHEN open > 0 THEN volume  END,
+            FROM df
+        )
+        ON CONFLICT (ticker, date) DO UPDATE SET
+            open    = COALESCE(EXCLUDED.open, open),
+            high    = COALESCE(EXCLUDED.high, high),
+            low     = COALESCE(EXCLUDED.low, low),
+            close   = COALESCE(EXCLUDED.close, close),
+            volume  = COALESCE(EXCLUDED.volume, volume)
     """)
