@@ -61,8 +61,13 @@ def build_summary_blocks(df: pd.DataFrame) -> list[str]:
 
     return blocks
 
-def build_summary_messages(df: pd.DataFrame) -> list[str]:
-    return split_message(build_summary_blocks(df), TELEGRAM_MAX_CHARS)
+def build_summary_messages(df: pd.DataFrame, stale: list[str] | None = None) -> list[str]:
+    blocks = build_summary_blocks(df)
+    if stale:
+        names = ", ".join(t.removesuffix(".SA") for t in stale)
+        blocks.append(f"Não atualizados hoje: {names}")
+        
+    return split_message(blocks, TELEGRAM_MAX_CHARS)
 
 def split_message(blocks: list[str], limit: int) -> list[str]:
     messages = []

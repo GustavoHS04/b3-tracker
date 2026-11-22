@@ -49,8 +49,9 @@ async def closing_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _has_bar_for(summary, today):
         logger.info("Sem barra de hoje; provavelmente sem pregão")
         return
-
-    messages = build_summary_messages(summary)
+    
+    stale = [t for t, s in results.items() if s is not Status.OK]
+    messages = build_summary_messages(summary, stale)
     for text in messages:
         await context.bot.send_message(chat_id=job.chat_id, text=text)
 
