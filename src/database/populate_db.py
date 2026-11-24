@@ -48,3 +48,9 @@ def save_quotes(con: DuckDBPyConnection, df: pd.DataFrame) -> None:
             close   = COALESCE(EXCLUDED.close, close),
             volume  = COALESCE(EXCLUDED.volume, volume)
     """)
+
+def delete_quotes(con: DuckDBPyConnection, ticker: str) -> None:
+    con.execute("DELETE from daily_quotes WHERE ticker = ?", [ticker])
+
+def delete_ticker(con: DuckDBPyConnection, ticker: str) -> None:
+    con.execute("DELETE from dim_ticker WHERE ticker = ?", [ticker])

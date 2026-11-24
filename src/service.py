@@ -5,7 +5,7 @@ import pandas as pd
 import logging
 
 from .sources.yahoo import buscar_historico, buscar_nome, preparar_cotacoes
-from .database.populate_db import populate_dim_ticker, save_quotes
+from .database.populate_db import populate_dim_ticker, save_quotes, delete_ticker, delete_quotes
 from .database.queries import get_last_date, list_tickers, get_first_date, get_summary
 from .summary import format_summary
 
@@ -44,6 +44,16 @@ def _register_ticker(con: DuckDBPyConnection, ticker: str, nome: str, df: pd.Dat
     except BaseException:
         con.rollback()
         raise
+
+def _unregister_ticker(con: DuckDBPyConnection, ticker: str) -> None:
+    for step in (delete_quotes, delete_ticker):
+        con.begin()
+        try:
+            step(con, ticker)
+            con.commit()
+        except BaseException:
+            con.rollback()
+            raise
 
 def _precisa_rebaixar(df: pd.DataFrame) -> bool:
     if (df["Dividends"] > 0).any() or (df["Stock Splits"] > 0).any():
@@ -176,3 +186,42 @@ def update_all(con: DuckDBPyConnection) -> dict[str, Status]:
 def load_summary(con: DuckDBPyConnection) -> pd.DataFrame:
     summary = get_summary(con)
     return summary if summary.empty else format_summary(summary)
+
+def remove_tickers(con: DuckDBPyConnection, raws: str | list[str]) -> dict[str, Status]:
+    raws = [raws] if isinstance(raws, str) else raws
+    if len(raws) > MAX_TICKERS_POR_VEZ:
+            raise LimiteExcedidoError(f"Limite de {MAX_TICKERS_POR_VEZ} tickers de uma só vez: {len(raws)} recebidos.")
+    
+    existentes = set(list_tickers(con))
+    vistos = set()
+    results = {}
+    tickers = []
+    ordem = []
+
+    for raw in raws:
+        if not _is_valid_ticker(raw):
+            logger.warning("Ticker inválido: %r", raw[:50])
+            results[raw] = Status.INVALID
+            ordem.append(raw)
+
+        else:
+            ticker = _normalize_ticker(raw)
+            if ticker in vistos:
+                logger.info("Ticker %s duplicado na entrada", ticker)
+                continue
+
+            vistos.add(ticker)
+            ordem.append(ticker)
+    
+            tickers.append(ticker)
+
+    for ticker in tickers:
+        if ticker not in existentes:
+            results[tickers] = Status.NOT_FOUND
+            continue
+
+        _unregister_ticker(con, ticker)
+        results[ticker] = Status.OK
+        logger.info("Ticker %s removido", ticker)
+
+    return {k: results[k] for k in ordem}

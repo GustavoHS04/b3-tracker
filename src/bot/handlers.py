@@ -7,11 +7,11 @@ import asyncio
 from ..database.connect_db import connect
 from ..database.bootstrap_db import ensure_db
 from ..database.queries import list_tickers_with_names
-from ..service import add_tickers, Status
+from ..service import Status, add_tickers, remove_tickers
 from ..errors import LimiteExcedidoError
 from ..config import MAX_TICKERS_POR_VEZ, NAME_MAX_LEN, TELEGRAM_MAX_CHARS, LOCK_TIMEOUT_SECONDS
 from .locks import DB_LOCK
-from .messages import format_add_results, split_message
+from .messages import ADD_TEXT, REMOVE_TEXT, format_results, split_message
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,11 @@ def _add_blocking(raws: list[str]) -> dict[str, Status]:
         ensure_db(con)
         return add_tickers(con, raws)
 
+def _remove_blocking(raws: list[str]) -> dict[str, Status]:
+    with connect(read_only=False) as con:
+        ensure_db(con)
+        return remove_tickers(con, raws)
+     
 def _list_blocking() -> list[tuple[str, str]]:
     with connect(read_only=False) as con:
         ensure_db(con)
@@ -78,8 +83,21 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await _reply(update, f"Mande até {MAX_TICKERS_POR_VEZ} tickers por vez.")
         return
 
-    await _reply(update, format_add_results(results))
+    await _reply(update, format_results(results, ADD_TEXT))
 
+async def remover(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    args = context.args or []
+    raws = " ".join(args).replace(",", " ").split()
+    if not raws:
+        await _reply(update, "Use: /remover petr4 val3")
+        return
+    try:
+        results = await _run_db(_remove_blocking, raws)
+    except LimiteExcedidoError:
+        await _reply(update, f"Mande atẽ {MAX_TICKERS_POR_VEZ} tickers por vez.")
+        return
+    await _reply(update, format_results(results, REMOVE_TEXT))
+    
 async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     pairs = await _run_db(_list_blocking)
     if not pairs:
@@ -98,6 +116,7 @@ _COMMANDS = {
     "start": (start, "Boas-vindas e lista de comandos"),
     "help": (help, "Lista os comandos"),
     "add": (add, "Adiciona tickers (ex.: /add petr4 vale3)"),
+    "remover": (remover, "Remove tickers (ex.: /remover petr4 vale3)"),
     "lista": (lista, "Mostra os ativos cadastrados"),
 }
 
