@@ -38,6 +38,11 @@ async def _reply(update: Update, text: str) -> None:
     
     await message.reply_text(text)
 
+def _tokens(text: str) -> list[str]:
+    return text.replace(",", " ").split()
+
+def _parse_args(context: ContextTypes.DEFAULT_TYPE) -> list[str]:
+    return _tokens(" ".join(context.args or []))
 
 def _short(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
@@ -76,8 +81,8 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply(update, _help_text())
 
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    args = context.args or []
-    raws = " ".join(args).replace(",", " ").split()
+    raws = _parse_args(context)
+
     if not raws:
         await _reply(update, "Use: /add petr4 vale3")
         return
@@ -93,8 +98,8 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply(update, format_results(results, ADD_TEXT))
 
 async def remover(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    args = context.args or []
-    raws = " ".join(args).replace(",", " ").split()
+    raws = _parse_args(context)
+
     if not raws:
         await _reply(update, "Use: /remover petr4 val3")
         return
@@ -128,7 +133,7 @@ async def resumo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await _reply(update, text)
 
 async def ativo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    raws = context.args or []
+    raws = _parse_args(context)
     if len(raws) != 1:
         await _reply(update, "Use: /ativo petr4")
         return
