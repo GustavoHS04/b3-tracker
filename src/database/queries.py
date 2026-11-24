@@ -17,6 +17,11 @@ def list_tickers(con: DuckDBPyConnection) -> list[str]:
 
     return [row[0] for row in rows]
 
+def list_tickers_with_names(con: DuckDBPyConnection) -> list[tuple[str, str]]:
+    rows = con.execute("SELECT ticker, name FROM dim_ticker ORDER BY ticker").fetchall()
+
+    return [(row[0], row[1] or row[0]) for row in rows]
+
 def get_indicators(con: DuckDBPyConnection, ticker: str, window: int = 20, vol_window: int = 20) -> pd.DataFrame:
     result = con.execute(f"""
         WITH base AS (

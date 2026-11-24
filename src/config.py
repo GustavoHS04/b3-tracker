@@ -21,6 +21,8 @@ TICKER_MIN_LEN = 4
 TICKER_MAX_LEN = 8
 MAX_TICKERS_POR_VEZ = 10
 YF_RETRIES = 2
+NAME_MAX_LEN = 40
+LOCK_TIMEOUT_SECONDS = 300
 
 # Configurações de logging
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"

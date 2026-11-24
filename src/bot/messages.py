@@ -82,7 +82,7 @@ def build_open_message(rows: list[tuple[str, float, float | None]], pending: lis
 
     return "\n".join(lines)
 
-def split_message(blocks: list[str], limit: int) -> list[str]:
+def split_message(blocks: list[str], limit: int, sep: str = "\n\n") -> list[str]:
     messages = []
     current = ""
 
@@ -93,7 +93,7 @@ def split_message(blocks: list[str], limit: int) -> list[str]:
         if _tg_len(block) > limit:
             raise ValueError(f"Bloco de {_tg_len(block)} caracteres excede o limite de {limit}.")
 
-        candidate = f"{current}\n\n{block}" if current else block
+        candidate = f"{current}{sep}{block}" if current else block
         if _tg_len(candidate) <= limit:
             current = candidate
         else:
