@@ -1,4 +1,5 @@
 import pandas as pd
+from datetime import date
 
 from ..config import DIAS_UTEIS_ANO, TELEGRAM_MAX_CHARS
 from ..service import Status
@@ -20,7 +21,7 @@ STATUS_TEXT = {
 def _tg_len(text: str) -> int:
     return len(text.encode("utf-16-le")) // 2
 
-def _pct(value: float, signed: bool = False) -> str:
+def _pct(value: float | None, signed: bool = False) -> str:
     if pd.isna(value):
         return "-"
     
@@ -33,7 +34,7 @@ def _money(value: float) -> str:
 
     return f"R${value:.2f}".replace(".", ",")
 
-def _trend_emoji(value: float) -> str:
+def _trend_emoji(value: float | None) -> str:
     if pd.isna(value) or value == 0:
         return EMOJI_FLAT
     return EMOJI_UP if value > 0 else EMOJI_DOWN
@@ -68,6 +69,18 @@ def build_summary_messages(df: pd.DataFrame, stale: list[str] | None = None) -> 
         blocks.append(f"Não atualizados hoje: {names}")
         
     return split_message(blocks, TELEGRAM_MAX_CHARS)
+
+def build_open_message(rows: list[tuple[str, float, float | None]], pending: list[str], today: date) -> str:
+    lines = [f"Abertura do pregão ({today.strftime("%d/%m/%Y")})"]
+    for ticker, open, gap in rows:
+        name = ticker.removesuffix(".SA")
+        lines.append(f"{_trend_emoji(gap)} {name}: {_money(open)} ({_pct(gap, signed=True)})")
+
+    if pending:
+        lines.append("Sem abertura ainda: " + ", ".join(t.removesuffix(".SA") for t in pending))
+    lines.append("Variação sobre o fechamento anterior. Dados do Yahoo, com atraso.")
+
+    return "\n".join(lines)
 
 def split_message(blocks: list[str], limit: int) -> list[str]:
     messages = []

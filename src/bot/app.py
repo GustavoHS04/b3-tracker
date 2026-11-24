@@ -9,10 +9,10 @@ from ..database.connect_db import connect
 from ..database.bootstrap_db import ensure_db
 from ..service import add_tickers, Status
 from ..errors import ConfiguracaoError, LimiteExcedidoError
-from ..config import MAX_TICKERS_POR_VEZ, TIMEZONE, CLOSING_TIME
+from ..config import MAX_TICKERS_POR_VEZ, TIMEZONE, CLOSING_TIME, OPEN_FIRST_TRY
 from .settings import require_telegram_config
 from .messages import format_add_results
-from .jobs import closing_job
+from .jobs import closing_job, opening_job
 from .locks import DB_LOCK
 
 logger = logging.getLogger(__name__)
@@ -54,7 +54,15 @@ def build_application() -> Application:
     job_queue = app.job_queue
     if job_queue is None:
         raise ConfiguracaoError("JobQueue indisponível: instale python-telegram-bot[job-queue].")
-    
+
+    job_queue.run_daily(
+        opening_job,
+        time=OPEN_FIRST_TRY.replace(tzinfo=ZoneInfo(TIMEZONE)),
+        days=(1,2,3,4,5),
+        chat_id=owner_id,
+        name="abertura"
+    )
+
     job_queue.run_daily(
         closing_job,
         time=CLOSING_TIME.replace(tzinfo=ZoneInfo(TIMEZONE)),

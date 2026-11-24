@@ -47,3 +47,6 @@ TELEGRAM_MAX_CHARS = 4000
 DIAS_UTEIS_ANO = 252 # Utilizado para cálculos de anualização
 TIMEZONE = "America/Sao_Paulo"
 CLOSING_TIME = time(18, 30)
+OPEN_FIRST_TRY = time(10, 22)
+OPEN_GIVE_UP = time(10, 50)
+OPEN_RETRY_SECONDS = 120

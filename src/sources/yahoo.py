@@ -61,3 +61,19 @@ def buscar_nome(ticker: str) -> str:
         return ticker
     
     return info.get("longName") or info.get("shortName") or ticker
+
+def parse_open(df: pd.DataFrame, today: date) -> tuple[float, float | None] | None:
+    if df.empty or df.index[-1].date() != today:
+        return None
+
+    open = float(df["Open"].iloc[-1])
+    if not open > 0:
+        return None
+
+    gap = None
+    if len(df) >= 2:
+        prev_close = float(df["Close"].iloc[-2])
+        if prev_close > 0:
+            gap = open / prev_close - 1
+
+    return open, gap
