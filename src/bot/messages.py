@@ -10,12 +10,19 @@ EMOJI_UP = "\N{CHART WITH UPWARDS TREND}"
 EMOJI_DOWN = "\N{CHART WITH DOWNWARDS TREND}"
 EMOJI_FLAT = "\N{HEAVY MINUS SIGN}"
 
-STATUS_TEXT = {
+ADD_TEXT = {
     Status.OK: "Ticker cadastrado com sucesso!",
     Status.EXISTS: "Ticker já está na lista de cadastros.",
     Status.NOT_FOUND: "Ticker não encontrado.",
     Status.UNAVAILABLE: "Fonte indisponível, tente novamente mais tarde.",
     Status.INVALID: "Formato inválido."
+}
+REMOVE_TEXT = {
+    Status.OK: "Removido (histórico apagado).",
+    Status.NOT_FOUND: "Não está na sua lista.",
+    Status.INVALID: "Formato inválido",
+    Status.EXISTS: "Resultado inesperado; tente novamente.",
+    Status.UNAVAILABLE: "Resultado inesperado; tente novamente.",
 }
 
 def _tg_len(text: str) -> int:
@@ -105,10 +112,10 @@ def split_message(blocks: list[str], limit: int, sep: str = "\n\n") -> list[str]
 
     return messages
 
-def format_add_results(results: dict[str, Status]) -> str:
+def format_results(results: dict[str, Status], texts: dict[Status, str]) -> str:
     lines = []
     for key, status in results.items():
         label = key.removesuffix(".SA")[:30]
-        lines.append(f"{label}: {STATUS_TEXT[status]}")
+        lines.append(f"{label}: {texts[status]}")
 
     return "\n".join(lines)
