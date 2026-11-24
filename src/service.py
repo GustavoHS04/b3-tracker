@@ -68,6 +68,11 @@ def _normalize_ticker(raw: str) -> str:
 
     return normalized
 
+def parse_ticker(raw: str) -> str | None:
+    if not _is_valid_ticker(raw):
+        return None
+    return _normalize_ticker(raw)
+
 def add_tickers(con: DuckDBPyConnection, raws: str | list[str], periodo: str = "10y") -> dict[str, Status]:
     raws = [raws] if isinstance(raws, str) else raws
     if len(raws) > MAX_TICKERS_POR_VEZ:
@@ -80,13 +85,13 @@ def add_tickers(con: DuckDBPyConnection, raws: str | list[str], periodo: str = "
     ordem = []
 
     for raw in raws:
-        if not _is_valid_ticker(raw):
+        ticker = parse_ticker(raw)
+        if ticker is None:
             logger.warning("Ticker inválido: %r", raw[:50])
             results[raw] = Status.INVALID
             ordem.append(raw)
 
         else:
-            ticker = _normalize_ticker(raw)
             if ticker in vistos:
                 logger.info("Ticker %s duplicado na entrada", ticker)
                 continue

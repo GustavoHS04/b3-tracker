@@ -1,17 +1,18 @@
 from telegram import Update, BotCommand, BotCommandScopeChat
 from telegram.ext import ContextTypes, Application, CommandHandler
 from telegram.error import TelegramError
+import pandas as pd
 import logging
 import asyncio
 
 from ..database.connect_db import connect
 from ..database.bootstrap_db import ensure_db
 from ..database.queries import list_tickers_with_names
-from ..service import Status, add_tickers, remove_tickers
+from ..service import Status, add_tickers, remove_tickers, parse_ticker, get_summary
 from ..errors import LimiteExcedidoError
 from ..config import MAX_TICKERS_POR_VEZ, NAME_MAX_LEN, TELEGRAM_MAX_CHARS, LOCK_TIMEOUT_SECONDS
 from .locks import DB_LOCK
-from .messages import ADD_TEXT, REMOVE_TEXT, format_results, split_message
+from .messages import ADD_TEXT, REMOVE_TEXT, format_results, split_message, build_summary_messages
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ async def _reply(update: Update, text: str) -> None:
     
     await message.reply_text(text)
 
+
 def _short(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
@@ -54,7 +56,12 @@ def _list_blocking() -> list[tuple[str, str]]:
     with connect(read_only=False) as con:
         ensure_db(con)
         return list_tickers_with_names(con)
-    
+
+def _summary_blocking() -> pd.DataFrame:
+    with connect(read_only=False) as con:
+        ensure_db(con)
+        return get_summary(con)
+
 def _help_text() -> str:
     lines = ["Comandos:"]
     for name, (_, description) in _COMMANDS.items():
@@ -112,12 +119,42 @@ async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     for text in split_message(lines, TELEGRAM_MAX_CHARS, sep="\n"):
         await _reply(update, text)
 
+async def resumo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    df = await _run_db(_summary_blocking)
+    if df.empty:
+        await _reply(update, "Nenhum ativo com dados. Use /add petr4")
+        return
+    for text in build_summary_messages(df):
+        await _reply(update, text)
+
+async def ativo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    raws = context.args or []
+    if len(raws) != 1:
+        await _reply(update, "Use: /ativo petr4")
+        return
+
+    ticker = parse_ticker(raws[0])
+    if ticker is None:
+        await _reply(update, "Formato de ticker inválido.")
+        return
+
+    df = await _run_db(_summary_blocking)
+    one = df[df["ticker"] == ticker]
+    if one.empty:
+        await _reply(update, f"Sem dados para {ticker.removesuffix('.SA')}. Cadastre com /add ou aguarde a próxima atualização.")
+        return
+    for text in build_summary_messages(one):
+        await _reply(update, text)
+
+    
 _COMMANDS = {
     "start": (start, "Boas-vindas e lista de comandos"),
     "help": (help, "Lista os comandos"),
     "add": (add, "Adiciona tickers (ex.: /add petr4 vale3)"),
     "remover": (remover, "Remove tickers (ex.: /remover petr4 vale3)"),
     "lista": (lista, "Mostra os ativos cadastrados"),
+    "resumo": (resumo, "Resumo dos ativos (último fechamento)"),
+    "ativo": (ativo, "Resumo de um ativo (ex.: /ativo petr4)")
 }
 
 def registrar_handlers(app: Application, only_owner) -> None:
