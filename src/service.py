@@ -20,6 +20,7 @@ class Status(Enum):
     NOT_FOUND = "not_found"
     UNAVAILABLE = "unavailable"
     INVALID = "invalid"
+    FOUND = "found"
 
 
 def _is_valid_ticker(raw: str) -> bool:
@@ -68,21 +69,15 @@ def _normalize_ticker(raw: str) -> str:
 
     return normalized
 
-def parse_ticker(raw: str) -> str | None:
-    if not _is_valid_ticker(raw):
-        return None
-    return _normalize_ticker(raw)
-
-def add_tickers(con: DuckDBPyConnection, raws: str | list[str], periodo: str = "10y") -> dict[str, Status]:
+def _prepare_ticker(raws: str | list[str]) -> tuple[list[str], dict[str, Status], list[str]]:
     raws = [raws] if isinstance(raws, str) else raws
     if len(raws) > MAX_TICKERS_POR_VEZ:
         raise LimiteExcedidoError(f"Limite de {MAX_TICKERS_POR_VEZ} tickers de uma só vez: {len(raws)} recebidos.")
-
-    existentes = set(list_tickers(con))
-    vistos = set()
-    results = {}
-    tickers = []
-    ordem = []
+    
+    ordem: list[str] = []
+    results: dict[str, Status] = {}
+    tickers: list[str] = []
+    vistos: set[str] = set()
 
     for raw in raws:
         ticker = parse_ticker(raw)
@@ -90,22 +85,38 @@ def add_tickers(con: DuckDBPyConnection, raws: str | list[str], periodo: str = "
             logger.warning("Ticker inválido: %r", raw[:50])
             results[raw] = Status.INVALID
             ordem.append(raw)
+            continue
+        if ticker in vistos:
+            logger.info("Ticker %s duplicado na entrada", ticker)
+            continue
+        vistos.add(ticker)
+        ordem.append(ticker)
+        tickers.append(ticker)
 
+    return ordem, results, tickers
+
+def _mark_existing(tickers: list[str], existentes: set[str], results: dict[str, Status]) -> list[str]:
+    novos = []
+    for ticker in tickers:
+        if ticker in existentes:
+            logger.info("Ticker %s já está cadastrado", ticker)
+            results[ticker] = Status.EXISTS
         else:
-            if ticker in vistos:
-                logger.info("Ticker %s duplicado na entrada", ticker)
-                continue
+            novos.append(ticker)
 
-            vistos.add(ticker)
-            ordem.append(ticker)
-            if ticker in existentes:
-                logger.info("Ticker %s já está cadastrado", ticker)
-                results[ticker] = Status.EXISTS
-            else:
-                tickers.append(ticker)
+    return novos
+
+def parse_ticker(raw: str) -> str | None:
+    if not _is_valid_ticker(raw):
+        return None
+    return _normalize_ticker(raw)
+
+def add_tickers(con: DuckDBPyConnection, raws: str | list[str], periodo: str = "10y") -> dict[str, Status]:
+    ordem, results, tickers = _prepare_ticker(raws)
+    novos = _mark_existing(tickers, set(list_tickers(con)), results)
 
     falhas = 0
-    for i, ticker in enumerate(tickers):
+    for i, ticker in enumerate(novos):
         try:
             df = buscar_historico(ticker, periodo)
 
@@ -120,7 +131,7 @@ def add_tickers(con: DuckDBPyConnection, raws: str | list[str], periodo: str = "
             falhas += 1
 
             if falhas >= MAX_FALHAS_SEGUIDAS:
-                restantes = tickers[i + 1:]
+                restantes = novos[i + 1:]
                 logger.warning("Fonte indisponível %d vezes seguidas; pulando %d ativos", falhas, len(restantes))
                 for rest in restantes:
                     results[rest] = Status.UNAVAILABLE
@@ -193,10 +204,25 @@ def load_summary(con: DuckDBPyConnection) -> pd.DataFrame:
     return summary if summary.empty else format_summary(summary)
 
 def remove_tickers(con: DuckDBPyConnection, raws: str | list[str]) -> dict[str, Status]:
+    ordem, results, tickers = _prepare_ticker(raws)
+    existentes = set(list_tickers(con))
+
+    for ticker in tickers:
+        if ticker not in existentes:
+            results[ticker] = Status.NOT_FOUND
+            continue
+
+        _unregister_ticker(con, ticker)
+        results[ticker] = Status.OK
+        logger.info("Ticker %s removido", ticker)
+
+    return {k: results[k] for k in ordem}
+
+def lookup_ticker(con: DuckDBPyConnection, raws: str | list[str]) -> tuple[dict[str, Status], dict[str, str]]:
     raws = [raws] if isinstance(raws, str) else raws
     if len(raws) > MAX_TICKERS_POR_VEZ:
-            raise LimiteExcedidoError(f"Limite de {MAX_TICKERS_POR_VEZ} tickers de uma só vez: {len(raws)} recebidos.")
-    
+        raise LimiteExcedidoError(f"Limite de {MAX_TICKERS_POR_VEZ} tickers de uma só vez: {len(raws)} recebidos.")
+
     existentes = set(list_tickers(con))
     vistos = set()
     results = {}
@@ -220,13 +246,4 @@ def remove_tickers(con: DuckDBPyConnection, raws: str | list[str]) -> dict[str, 
     
             tickers.append(ticker)
 
-    for ticker in tickers:
-        if ticker not in existentes:
-            results[tickers] = Status.NOT_FOUND
-            continue
-
-        _unregister_ticker(con, ticker)
-        results[ticker] = Status.OK
-        logger.info("Ticker %s removido", ticker)
-
-    return {k: results[k] for k in ordem}
+    
