@@ -69,7 +69,7 @@ def _normalize_ticker(raw: str) -> str:
 
     return normalized
 
-def _prepare_ticker(raws: str | list[str]) -> tuple[list[str], dict[str, Status], list[str]]:
+def _prepare(raws: str | list[str]) -> tuple[list[str], dict[str, Status], list[str]]:
     raws = [raws] if isinstance(raws, str) else raws
     if len(raws) > MAX_TICKERS_POR_VEZ:
         raise LimiteExcedidoError(f"Limite de {MAX_TICKERS_POR_VEZ} tickers de uma só vez: {len(raws)} recebidos.")
@@ -112,7 +112,7 @@ def parse_ticker(raw: str) -> str | None:
     return _normalize_ticker(raw)
 
 def add_tickers(con: DuckDBPyConnection, raws: str | list[str], periodo: str = "10y") -> dict[str, Status]:
-    ordem, results, tickers = _prepare_ticker(raws)
+    ordem, results, tickers = _prepare(raws)
     novos = _mark_existing(tickers, set(list_tickers(con)), results)
 
     falhas = 0
@@ -204,7 +204,7 @@ def load_summary(con: DuckDBPyConnection) -> pd.DataFrame:
     return summary if summary.empty else format_summary(summary)
 
 def remove_tickers(con: DuckDBPyConnection, raws: str | list[str]) -> dict[str, Status]:
-    ordem, results, tickers = _prepare_ticker(raws)
+    ordem, results, tickers = _prepare(raws)
     existentes = set(list_tickers(con))
 
     for ticker in tickers:
@@ -218,32 +218,23 @@ def remove_tickers(con: DuckDBPyConnection, raws: str | list[str]) -> dict[str, 
 
     return {k: results[k] for k in ordem}
 
-def lookup_ticker(con: DuckDBPyConnection, raws: str | list[str]) -> tuple[dict[str, Status], dict[str, str]]:
-    raws = [raws] if isinstance(raws, str) else raws
-    if len(raws) > MAX_TICKERS_POR_VEZ:
-        raise LimiteExcedidoError(f"Limite de {MAX_TICKERS_POR_VEZ} tickers de uma só vez: {len(raws)} recebidos.")
+def lookup_tickers(con: DuckDBPyConnection, raws: str | list[str]) -> tuple[dict[str, Status], dict[str, str]]:
+    ordem, results, tickers = _prepare(raws)
+    novos = _mark_existing(tickers, set(list_tickers(con)), results)
 
-    existentes = set(list_tickers(con))
-    vistos = set()
-    results = {}
-    tickers = []
-    ordem = []
+    names: dict[str, str] = {}
+    for i, ticker in enumerate(novos):
+        try:
+            buscar_historico(ticker, periodo="5y")
+        except TickerNaoEncontradoError:
+            results[ticker] = Status.NOT_FOUND
+            continue
+        except FonteIndisponivelError:
+            for rest in novos[i:]:
+                results[rest] = Status.UNAVAILABLE
+            break
 
-    for raw in raws:
-        if not _is_valid_ticker(raw):
-            logger.warning("Ticker inválido: %r", raw[:50])
-            results[raw] = Status.INVALID
-            ordem.append(raw)
+        names[ticker] = buscar_nome(ticker)
+        results[ticker] = Status.FOUND
 
-        else:
-            ticker = _normalize_ticker(raw)
-            if ticker in vistos:
-                logger.info("Ticker %s duplicado na entrada", ticker)
-                continue
-
-            vistos.add(ticker)
-            ordem.append(ticker)
-    
-            tickers.append(ticker)
-
-    
+    return {k: results[k] for k in ordem}, names

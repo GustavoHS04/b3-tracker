@@ -1,5 +1,5 @@
 from telegram import Update, BotCommand, BotCommandScopeChat
-from telegram.ext import ContextTypes, Application, CommandHandler
+from telegram.ext import ContextTypes, Application, CommandHandler, MessageHandler, filters
 from telegram.error import TelegramError
 import pandas as pd
 import logging
@@ -7,8 +7,8 @@ import asyncio
 
 from ..database.connect_db import connect
 from ..database.bootstrap_db import ensure_db
-from ..database.queries import list_tickers_with_names
-from ..service import Status, add_tickers, remove_tickers, parse_ticker, get_summary
+from ..database.queries import list_tickers_with_names, get_summary
+from ..service import Status, add_tickers, remove_tickers, parse_ticker, lookup_tickers
 from ..errors import LimiteExcedidoError
 from ..config import MAX_TICKERS_POR_VEZ, NAME_MAX_LEN, TELEGRAM_MAX_CHARS, LOCK_TIMEOUT_SECONDS
 from .locks import DB_LOCK
@@ -47,6 +47,14 @@ def _parse_args(context: ContextTypes.DEFAULT_TYPE) -> list[str]:
 def _short(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
+def _label(ticker: str) -> str:
+    return ticker.removesuffix(".SA")
+
+def _ticker_line(ticker: str, name: str) -> str:
+    if name == ticker:
+        return _label(ticker)
+    return f"{_label(ticker)}: {_short(name, NAME_MAX_LEN)}"
+    
 def _add_blocking(raws: list[str]) -> dict[str, Status]:
     with connect(read_only=False) as con:
         ensure_db(con)
@@ -67,17 +75,26 @@ def _summary_blocking() -> pd.DataFrame:
         ensure_db(con)
         return get_summary(con)
 
+def _lookup_blocking(raws: list[str]):
+    with connect(read_only=False) as con:
+        ensure_db(con)
+        results, names = lookup_tickers(con, raws)
+        summary = get_summary(con)
+    return results, names, summary
+
 def _help_text() -> str:
     lines = ["Comandos:"]
     for name, (_, description) in _COMMANDS.items():
         lines.append(f"/{name} - {description}")
+    lines.append("")
+    lines.append("Ou mande só o ticker (ex.: petr4) para ver o resumo.")
 
     return "\n".join(lines)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply(update, "Olá! Eu sou o InvestiBot, eu te ajudo a manter controle dos seus ativos.\n\n" + _help_text())
 
-async def help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply(update, _help_text())
 
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -101,12 +118,12 @@ async def remover(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     raws = _parse_args(context)
 
     if not raws:
-        await _reply(update, "Use: /remover petr4 val3")
+        await _reply(update, "Use: /remover petr4 vale3")
         return
     try:
         results = await _run_db(_remove_blocking, raws)
     except LimiteExcedidoError:
-        await _reply(update, f"Mande atẽ {MAX_TICKERS_POR_VEZ} tickers por vez.")
+        await _reply(update, f"Mande até {MAX_TICKERS_POR_VEZ} tickers por vez.")
         return
     await _reply(update, format_results(results, REMOVE_TEXT))
     
@@ -118,8 +135,8 @@ async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     lines = [f"Ativos cadastrados ({len(pairs)}):"]
     for ticker, name in pairs:
-        label = ticker.removesuffix(".SA")
-        lines.append(label if name == ticker else f"{label}: {_short(name, NAME_MAX_LEN)}")
+        label = _label(ticker)
+        lines.append(_ticker_line(ticker, name))
 
     for text in split_message(lines, TELEGRAM_MAX_CHARS, sep="\n"):
         await _reply(update, text)
@@ -151,10 +168,52 @@ async def ativo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     for text in build_summary_messages(one):
         await _reply(update, text)
 
+async def ticker_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    if message is None or not message.text:
+        return
+
+    raws = _tokens(message.text)
+    if not raws:
+        return
     
+    if len(raws) > MAX_TICKERS_POR_VEZ or any(parse_ticker(r) is None for r in raws):
+        await _reply(update, "Não entendi. Mande um ou mais tickers (ex.: petr4 vale3) ou use /help")
+        return
+
+    results, names, summary = await _run_db(_lookup_blocking, raws)
+
+    existing = [t for t, s in results.items() if s is Status.EXISTS]
+    found = [t for t, s in results.items() if s is Status.FOUND]
+    others = {t: s for t, s in results.items() if s not in (Status.EXISTS, Status.FOUND)}
+
+    shown = summary[summary["ticker"].isin(existing)]
+    with_data = set(shown["ticker"])
+    no_data = [t for t in existing if t not in with_data]
+
+    if not shown.empty:
+        for text in build_summary_messages(shown):
+            await _reply(update, text)
+
+    lines: list[str] = []
+    if no_data:
+        lines.append("Cadastrados, ainda sem dados: " + ", ".join(_label(t) for t in no_data))
+    if found:
+        lines.append("Encontrei, ainda não cadastrados:")
+        lines.extend(_ticker_line(t, names[t]) for t in found)
+        lines.append("Para cadastrar: /add " + " ".join(_label(t) for t in found))
+    if others:
+        lines.append(format_results(others, ADD_TEXT))
+
+    if lines:
+        await _reply(update, "\n".join(lines))
+
+async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _reply(update, "Comando desconhecido. Use /help")
+
 _COMMANDS = {
     "start": (start, "Boas-vindas e lista de comandos"),
-    "help": (help, "Lista os comandos"),
+    "help": (help_command, "Lista os comandos"),
     "add": (add, "Adiciona tickers (ex.: /add petr4 vale3)"),
     "remover": (remover, "Remove tickers (ex.: /remover petr4 vale3)"),
     "lista": (lista, "Mostra os ativos cadastrados"),
@@ -165,6 +224,9 @@ _COMMANDS = {
 def registrar_handlers(app: Application, only_owner) -> None:
     for name, (callback, _) in _COMMANDS.items():
         app.add_handler(CommandHandler(name, callback, filters=only_owner))
+    
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & only_owner, ticker_message))
+    app.add_handler(MessageHandler(filters.COMMAND & only_owner, unknown))
     app.add_error_handler(_on_error)
 
 async def publish_command(app: Application, owner_id: int) -> None:

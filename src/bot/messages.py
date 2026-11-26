@@ -15,7 +15,8 @@ ADD_TEXT = {
     Status.EXISTS: "Ticker já está na lista de cadastros.",
     Status.NOT_FOUND: "Ticker não encontrado.",
     Status.UNAVAILABLE: "Fonte indisponível, tente novamente mais tarde.",
-    Status.INVALID: "Formato inválido."
+    Status.INVALID: "Formato inválido.",
+    Status.FOUND: "Encontrado, ainda não cadastrado.",
 }
 REMOVE_TEXT = {
     Status.OK: "Removido (histórico apagado).",
@@ -23,6 +24,7 @@ REMOVE_TEXT = {
     Status.INVALID: "Formato inválido",
     Status.EXISTS: "Resultado inesperado; tente novamente.",
     Status.UNAVAILABLE: "Resultado inesperado; tente novamente.",
+    Status.FOUND: "Resultado inesperado; tente novamente.",
 }
 
 def _tg_len(text: str) -> int:
