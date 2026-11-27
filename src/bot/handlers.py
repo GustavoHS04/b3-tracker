@@ -5,13 +5,14 @@ import pandas as pd
 import logging
 import asyncio
 import secrets
+import time
 
 from ..database.connect_db import connect
 from ..database.bootstrap_db import ensure_db
 from ..database.queries import list_tickers_with_names, get_summary
 from ..service import Status, add_tickers, remove_tickers, parse_ticker, lookup_tickers
 from ..errors import LimiteExcedidoError
-from ..config import MAX_TICKERS_POR_VEZ, NAME_MAX_LEN, TELEGRAM_MAX_CHARS, LOCK_TIMEOUT_SECONDS
+from ..config import MAX_TICKERS_POR_VEZ, NAME_MAX_LEN, TELEGRAM_MAX_CHARS, LOCK_TIMEOUT_SECONDS, CONFIRM_TTL_SECONDS
 from .locks import DB_LOCK
 from .messages import ADD_TEXT, REMOVE_TEXT, format_results, split_message, build_summary_messages
 
@@ -105,10 +106,14 @@ def _new_pending(context: ContextTypes.DEFAULT_TYPE, tickers: list[str]) -> str 
         return None
 
     pending = chat_data.setdefault("pending", {})
+    now = time.monotonic()
+    for key in [k for k, v in pending.items() if now - v["at"] > CONFIRM_TTL_SECONDS]:
+        del pending[key]
     pending_id = secrets.token_hex(4)
-    pending[pending_id] = tickers
+    pending[pending_id] = {"tickers": tickers, "at": now}
 
     return pending_id
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply(update, "Olá! Eu sou o InvestiBot, eu te ajudo a manter controle dos seus ativos.\n\n" + _help_text())
 
@@ -253,15 +258,15 @@ async def confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     
     action, _, pending_id = (query.data or "").partition(":")
     chat_data = context.chat_data
-    tickers = chat_data.get("pending", {}).pop(pending_id, None) if chat_data is not None else None
-
-    if tickers is None:
+    item = chat_data.get("pending", {}).pop(pending_id, None) if chat_data is not None else None
+    if item is None or time.monotonic() - item["at"] > CONFIRM_TTL_SECONDS:
         await query.edit_message_text("Essa confirmação expirou ou já foi usada.")
         return
     if action == "no":
         await query.edit_message_text("Cancelado.")
         return
-
+    tickers = item["tickers"]
+    
     await query.edit_message_text("Cadastrando, pode demorar um pouco...")
     results, summary = await _run_db(_add_summary_blocking, tickers)
 

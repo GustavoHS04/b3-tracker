@@ -39,11 +39,12 @@ LIB_LOG_LEVELS = {
     "apscheduler": logging.INFO,
 }
 
-# Configurações do Telegram
+# Configurações do Telegram e do bot
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 TELEGRAM_TIMEOUT = 15
 TELEGRAM_MAX_CHARS = 4000
+CONFIRM_TTL_SECONDS = 600
 
 # Configurações dos ativos
 DIAS_UTEIS_ANO = 252 # Utilizado para cálculos de anualização
