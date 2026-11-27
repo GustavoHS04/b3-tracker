@@ -60,6 +60,8 @@ def get_summary(con: DuckDBPyConnection, window: int = 20, vol_window: int = 20)
             SELECT
                 ticker,
                 date,
+                high,
+                low,
                 close,
                 close / lag(close) OVER(PARTITION BY ticker ORDER BY date) - 1 AS daily_return
             FROM daily_quotes
@@ -68,6 +70,8 @@ def get_summary(con: DuckDBPyConnection, window: int = 20, vol_window: int = 20)
             SELECT
                 ticker,
                 date,
+                high,
+                low,
                 close,
                 daily_return,
                 avg(close) OVER (
@@ -88,7 +92,7 @@ def get_summary(con: DuckDBPyConnection, window: int = 20, vol_window: int = 20)
                 row_number() OVER (PARTITION BY ticker ORDER BY date DESC) AS rn
             FROM base
         )
-        SELECT ticker, date, close, daily_return, moving_avg, volatility, drawdown
+        SELECT ticker, date, close, high, low, daily_return, moving_avg, volatility, drawdown
         FROM calc
         WHERE rn = 1
         ORDER BY ticker

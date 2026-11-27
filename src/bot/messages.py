@@ -48,6 +48,20 @@ def _trend_emoji(value: float | None) -> str:
         return EMOJI_FLAT
     return EMOJI_UP if value > 0 else EMOJI_DOWN
 
+def _range_line(low: float | None, high: float | None, close: float | None) -> str:
+    if pd.isna(low) or pd.isna(high) or pd.isna(close) or close <= 0:
+        return "Faixa do dia: -"
+
+    lines = [f"Faixa do dia: {_money(low)} a {_money(high)}"]
+    amplitude = _pct((high - low) / close)
+    if high > low:
+        position = min(1.0, max(0.0, (close - low) / (high - low)))
+        lines.append(f"Amplitude {amplitude}, fechou a {position:.0%}")
+    else:
+        lines.append(f"Amplitude {amplitude}")
+
+    return "\n".join(lines)
+
 def build_summary_blocks(df: pd.DataFrame) -> list[str]:
     blocks = [f"{EMOJI_TITLE} Resumo dos ativos"]
 
@@ -64,6 +78,7 @@ def build_summary_blocks(df: pd.DataFrame) -> list[str]:
         blocks.append(
             f"{EMOJI_TICKER} {ticker} ({date})\n"
             f"{emoji} Fechamento: {fechamento} ({daily_return})\n"
+            f"{_range_line(row['low'], row['high'], row['close'])}\n"
             f"Média móvel: {media_movel}\n"
             f"Volatil. anual: {volatility_ann}\n"
             f"Drawdown: {drawdown}"
