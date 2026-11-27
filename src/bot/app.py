@@ -23,8 +23,9 @@ def build_application() -> Application:
 
     app = Application.builder().token(token).post_init(_post_init).build()
     only_owner = filters.Chat(chat_id=owner_id)
+    app.bot_data["owner_id"] = owner_id
     registrar_handlers(app, only_owner)
-
+    
     job_queue = app.job_queue
     if job_queue is None:
         raise ConfiguracaoError("JobQueue indisponível: instale python-telegram-bot[job-queue].")

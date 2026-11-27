@@ -1,9 +1,10 @@
-from telegram import Update, BotCommand, BotCommandScopeChat
-from telegram.ext import ContextTypes, Application, CommandHandler, MessageHandler, filters
+from telegram import Update, BotCommand, BotCommandScopeChat, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes, Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from telegram.error import TelegramError
 import pandas as pd
 import logging
 import asyncio
+import secrets
 
 from ..database.connect_db import connect
 from ..database.bootstrap_db import ensure_db
@@ -30,13 +31,13 @@ async def _on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     if isinstance(update, Update):
         await _reply(update, "Algo deu errado. Tente de novo em instantes.")
 
-async def _reply(update: Update, text: str) -> None:
+async def _reply(update: Update, text: str, reply_markup: InlineKeyboardMarkup | None = None) -> None:
     message = update.effective_message
     if message is None:
         logger.warning("Atualização sem mensagem; resposta descartada")
         return
     
-    await message.reply_text(text)
+    await message.reply_text(text, reply_markup=reply_markup)
 
 def _tokens(text: str) -> list[str]:
     return text.replace(",", " ").split()
@@ -59,6 +60,13 @@ def _add_blocking(raws: list[str]) -> dict[str, Status]:
     with connect(read_only=False) as con:
         ensure_db(con)
         return add_tickers(con, raws)
+
+def _add_summary_blocking(raws: list[str]) -> tuple[dict[str, Status], pd.DataFrame]:
+    with connect(read_only=False) as con:
+        ensure_db(con)
+        results = add_tickers(con, raws)
+        summary = get_summary(con)
+    return results, summary
 
 def _remove_blocking(raws: list[str]) -> dict[str, Status]:
     with connect(read_only=False) as con:
@@ -91,6 +99,16 @@ def _help_text() -> str:
 
     return "\n".join(lines)
 
+def _new_pending(context: ContextTypes.DEFAULT_TYPE, tickers: list[str]) -> str | None:
+    chat_data = context.chat_data
+    if chat_data is None:
+        return None
+
+    pending = chat_data.setdefault("pending", {})
+    pending_id = secrets.token_hex(4)
+    pending[pending_id] = tickers
+
+    return pending_id
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply(update, "Olá! Eu sou o InvestiBot, eu te ajudo a manter controle dos seus ativos.\n\n" + _help_text())
 
@@ -196,20 +214,63 @@ async def ticker_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await _reply(update, text)
 
     lines: list[str] = []
+    keyboard = None
     if no_data:
         lines.append("Cadastrados, ainda sem dados: " + ", ".join(_label(t) for t in no_data))
     if found:
         lines.append("Encontrei, ainda não cadastrados:")
         lines.extend(_ticker_line(t, names[t]) for t in found)
-        lines.append("Para cadastrar: /add " + " ".join(_label(t) for t in found))
+        pending_id = _new_pending(context, found)
+        if pending_id is not None:
+            keyboard = InlineKeyboardMarkup([[
+                InlineKeyboardButton("Cadastrar", callback_data=f"add:{pending_id}"),
+                InlineKeyboardButton("Cancelar", callback_data=f"no:{pending_id}"),
+            ]])
+
     if others:
         lines.append(format_results(others, ADD_TEXT))
 
     if lines:
-        await _reply(update, "\n".join(lines))
+        await _reply(update, "\n".join(lines), reply_markup=keyboard)
 
 async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply(update, "Comando desconhecido. Use /help")
+
+async def confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if query is None:
+        return
+    await query.answer()
+
+    chat = update.effective_chat
+    owner_id = context.bot_data.get("owner_id")
+    if owner_id is None:
+        logger.error("owner_id ausente em bot_data; cliques ignorados (confira app.py)")
+        return
+    if chat is None or chat.id != context.bot_data.get("owner_id"):
+        logger.warning("Clique em um chat não autorizado; ignorado")
+        return
+    
+    action, _, pending_id = (query.data or "").partition(":")
+    chat_data = context.chat_data
+    tickers = chat_data.get("pending", {}).pop(pending_id, None) if chat_data is not None else None
+
+    if tickers is None:
+        await query.edit_message_text("Essa confirmação expirou ou já foi usada.")
+        return
+    if action == "no":
+        await query.edit_message_text("Cancelado.")
+        return
+
+    await query.edit_message_text("Cadastrando, pode demorar um pouco...")
+    results, summary = await _run_db(_add_summary_blocking, tickers)
+
+    await _reply(update, format_results(results, ADD_TEXT))
+    registered = [t for t, s in results.items() if s is Status.OK]
+    shown = summary[summary["ticker"].isin(registered)]
+    if not shown.empty:
+        for text in build_summary_messages(shown):
+            await _reply(update, text)
 
 _COMMANDS = {
     "start": (start, "Boas-vindas e lista de comandos"),
@@ -227,6 +288,7 @@ def registrar_handlers(app: Application, only_owner) -> None:
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & only_owner, ticker_message))
     app.add_handler(MessageHandler(filters.COMMAND & only_owner, unknown))
+    app.add_handler(CallbackQueryHandler(confirm_callback, pattern=r"^(add|no):[0-9a-f]{8}$"))
     app.add_error_handler(_on_error)
 
 async def publish_command(app: Application, owner_id: int) -> None:
